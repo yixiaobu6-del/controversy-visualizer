@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>争议可视化器 - 增强版</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-50 font-sans">
+<nav class="bg-red-700 text-white p-4 shadow-lg">
+  <div class="max-w-5xl mx-auto flex items-center justify-between">
+    <h1 class="text-xl font-bold"><i class="fa fa-balance-scale mr-2"></i>争议可视化器</h1>
+  </div>
+</nav>
+<div class="max-w-5xl mx-auto p-4">
+  <!-- 输入区 -->
+  <div class="bg-white rounded-xl shadow p-6 mb-6">
+    <h3 class="font-bold mb-4"><i class="fa fa-edit mr-2 text-red-600"></i>输入争议话题</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div>
+        <label class="block text-sm text-gray-600 mb-1">争议话题</label>
+        <input type="text" id="topic" class="w-full border rounded p-2" placeholder="输入争议话题或选择下方内置话题">
+        <div class="mt-2">
+          <label class="block text-xs text-gray-500 mb-1"><i class="fa fa-database mr-1"></i>内置话题库：</label>
+          <select id="topicLibrary" onchange="loadTopic()" class="w-full border rounded p-1.5 text-sm">
+            <option value="">--- 选择一个内置话题 ---</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm text-gray-600 mb-1">立场A (正方)</label>
+        <input type="text" id="sideA" class="w-full border rounded p-2" placeholder="正方观点">
+      </div>
+      <div>
+        <label class="block text-sm text-gray-600 mb-1">立场B (反方)</label>
+        <input type="text" id="sideB" class="w-full border rounded p-2" placeholder="反方观点">
+      </div>
+      <div>
+        <button onclick="generate()" class="w-full bg-red-600 text-white py-2 rounded hover:bg-red-700 mt-6"><i class="fa fa-cogs mr-2"></i>生成争议分析</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 结果区 -->
+  <div id="resultArea" class="hidden">
+    <div id="exportArea" class="bg-white rounded-xl shadow p-6 mb-6">
+      <div class="text-center mb-6">
+        <h2 class="text-2xl font-bold" id="resultTopic"></h2>
+        <div class="flex justify-center gap-8 mt-3">
+          <span class="text-blue-600 font-medium"><i class="fa fa-thumbs-up mr-1"></i><span id="resultSideA"></span></span>
+          <span class="text-gray-400">VS</span>
+          <span class="text-red-600 font-medium"><i class="fa fa-thumbs-down mr-1"></i><span id="resultSideB"></span></span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-6 mb-6">
+        <div>
+          <h4 class="font-bold text-blue-700 mb-3"><i class="fa fa-check-circle mr-1"></i>正方论点</h4>
+          <ul id="proA" class="space-y-2"></ul>
+        </div>
+        <div>
+          <h4 class="font-bold text-red-700 mb-3"><i class="fa fa-check-circle mr-1"></i>反方论点</h4>
+          <ul id="proB" class="space-y-2"></ul>
+        </div>
+      </div>
+
+      <!-- 双图表 -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div><canvas id="radarChart" height="200"></canvas></div>
+        <div><canvas id="barChart" height="200"></canvas></div>
+      </div>
+
+      <!-- 论据推荐 -->
+      <div class="mb-6 bg-indigo-50 rounded-lg p-4">
+        <h4 class="font-bold text-indigo-700 mb-3"><i class="fa fa-lightbulb-o mr-1"></i>论据推荐</h4>
+        <div id="recommendArea" class="grid grid-cols-2 gap-3"></div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-6">
+        <div class="bg-green-50 rounded p-4">
+          <h4 class="font-bold text-green-700 mb-2"><i class="fa fa-handshake-o mr-1"></i>共识点</h4>
+          <ul id="consensus" class="space-y-1 text-sm"></ul>
+        </div>
+        <div class="bg-yellow-50 rounded p-4">
+          <h4 class="font-bold text-yellow-700 mb-2"><i class="fa fa-exclamation-triangle mr-1"></i>分歧点</h4>
+          <ul id="divergence" class="space-y-1 text-sm"></ul>
+        </div>
+      </div>
+
+      <!-- 投票区域 -->
+      <div id="voteArea" class="hidden bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-4 mb-6 border border-blue-200">
+        <h4 class="font-bold text-gray-700 mb-3"><i class="fa fa-thumbs-up mr-1 text-blue-500"></i>投票表态</h4>
+        <div class="flex justify-center gap-4 mb-3">
+          <button onclick="vote('A')" class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition flex items-center gap-2">
+            <i class="fa fa-thumbs-up"></i>支持正方
+          </button>
+          <button onclick="vote('B')" class="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 transition flex items-center gap-2">
+            <i class="fa fa-thumbs-down"></i>支持反方
+          </button>
+        </div>
+        <div id="voteResults" class="text-center">
+          <div class="flex items-center justify-center gap-8">
+            <div class="text-blue-600">
+              <div class="text-sm">正方票数</div>
+              <div id="voteCountA" class="text-2xl font-bold">0</div>
+            </div>
+            <div class="flex-1 max-w-[300px]">
+              <div class="h-6 bg-gray-200 rounded-full overflow-hidden flex">
+                <div id="voteBarA" class="bg-blue-500 h-full transition-all duration-500" style="width:50%"></div>
+                <div id="voteBarB" class="bg-red-500 h-full transition-all duration-500" style="width:50%"></div>
+              </div>
+            </div>
+            <div class="text-red-600">
+              <div class="text-sm">反方票数</div>
+              <div id="voteCountB" class="text-2xl font-bold">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-center gap-3 mb-6">
+      <button onclick="exportMarkdown()" class="bg-emerald-600 text-white px-5 py-2 rounded-lg hover:bg-emerald-700"><i class="fa fa-file-text-o mr-2"></i>导出分析报告 (Markdown)</button>
+    </div>
+  </div>
+
+  <!-- 历史记录 -->
+  <div class="bg-white rounded-xl shadow p-6">
+    <h3 class="font-bold mb-4"><i class="fa fa-history mr-2 text-red-600"></i>历史记录</h3>
+    <select id="historySelect" onchange="loadHistory()" class="w-full border rounded p-2 mb-3"></select>
+    <button onclick="clearHistory()" class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"><i class="fa fa-trash mr-1"></i>清空历史</button>
+  </div>
+
+  <!-- 热门话题排行榜 -->
+  <div class="bg-white rounded-xl shadow p-6 mt-6">
+    <h3 class="font-bold mb-4"><i class="fa fa-fire mr-2 text-orange-500"></i>热门话题排行榜</h3>
+    <div id="hotTopicsList" class="space-y-2"></div>
+  </div>
+
+  <!-- 用户话题库 -->
+  <div class="bg-white rounded-xl shadow p-6 mt-6">
+    <h3 class="font-bold mb-4"><i class="fa fa-folder-open mr-2 text-purple-600"></i>我的话题库</h3>
+    <div class="mb-4 p-4 bg-purple-50 rounded-lg border border-purple-100">
+      <p class="text-xs text-purple-600 mb-2">保存当前话题到我的话题库，方便下次快速使用</p>
+      <button onclick="saveUserTopic()" class="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 text-sm"><i class="fa fa-save mr-1"></i>保存当前话题</button>
+    </div>
+    <div id="userTopicsList" class="space-y-2"></div>
+    <p id="userTopicsEmpty" class="text-center py-6 text-slate-400 text-sm hidden"><i class="fa fa-folder-open-o text-2xl mb-2 block text-slate-200"></i>暂无保存的话题</p>
+  </div>
+
+  <!-- 共识分析 -->
+  <div id="consensusAnalysisArea" class="bg-white rounded-xl shadow p-6 mt-6 hidden">
+    <h3 class="font-bold mb-4"><i class="fa fa-handshake-o mr-2 text-green-600"></i>共识深度分析</h3>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div class="bg-green-50 rounded-lg p-4 text-center">
+        <p class="text-xs text-green-600 mb-1">论点重叠度</p>
+        <p id="overlapScore" class="text-3xl font-bold text-green-700">0%</p>
+      </div>
+      <div class="bg-blue-50 rounded-lg p-4 text-center">
+        <p class="text-xs text-blue-600 mb-1">共同关键词</p>
+        <p id="sharedKeywordsCount" class="text-3xl font-bold text-blue-700">0</p>
+      </div>
+      <div class="bg-yellow-50 rounded-lg p-4 text-center">
+        <p class="text-xs text-yellow-600 mb-1">潜在共识区</p>
+        <p id="potentialConsensusCount" class="text-3xl font-bold text-yellow-700">0</p>
+      </div>
+    </div>
+    <div class="bg-slate-50 rounded-lg p-4">
+      <p class="text-xs text-slate-600 mb-2 font-medium"><i class="fa fa-key mr-1"></i>共同关键词</p>
+      <div id="sharedKeywordsList" class="flex flex-wrap gap-2"></div>
+    </div>
+    <div class="bg-slate-50 rounded-lg p-4 mt-3">
+      <p class="text-xs text-slate-600 mb-2 font-medium"><i class="fa fa-lightbulb-o mr-1"></i>潜在共识区建议</p>
+      <ul id="potentialConsensusList" class="space-y-1 text-sm text-slate-700"></ul>
+    </div>
+  </div>
+</div>
+
+<script>
+let radarChartInstance, barChartInstance;
+let history = JSON.parse(localStorage.getItem('debateHistory') || '[]');
+let currentData = null;
+
+// ============================================================
+// 10个内置争议话题库
+// ============================================================
+const TOPIC_LIBRARY = [
+  {
+    topic: '远程办公 vs 办公室办公', sideA: '远程办公更高效', sideB: '办公室办公更高效',
+    a: ['减少通勤时间，提升工作效率', '灵活安排时间，工作生活更平衡', '降低企业办公场地成本', '员工自主性更强，满意度更高', '减少碳排放，更环保', '全球招聘人才不受地域限制', '减少办公室政治干扰'],
+    b: ['缺乏面对面沟通，团队协作效率低', '工作与生活界限模糊，易过度劳累', '新人培养困难，缺乏企业文化熏陶', '自控力差者效率反而下降', '家庭环境干扰因素多', '创新想法来自偶遇交流', '安全隐患和数据泄露风险'],
+    consensus: ['两种模式各有利弊', '混合办公可能是最佳方案', '需要根据行业和岗位特点选择'], divergence: ['效率到底哪种更高', '企业是否应该强制办公形式', '长期来看哪种模式更可持续']
+  },
+  {
+    topic: '人工智能威胁论', sideA: 'AI 对人类构成威胁', sideB: 'AI 是机遇而非威胁',
+    a: ['大量岗位将被AI取代', 'AI 存在失控风险', '深度伪造破坏社会信任', '算法偏见扩大社会不公', 'AI 军备竞赛威胁全球安全', '隐私被AI大规模侵犯', '人类失去对技术的主导权'],
+    b: ['AI 创造更多新岗位', 'AI 帮助解决气候等重大难题', 'AI 提升医疗诊断准确率', '人类始终可以控制AI', 'AI 提高生产效率降低物价', 'AI 辅助个性化教育', '监管可以控制风险'],
+    consensus: ['AI 影响巨大需要认真对待', '监管框架需要建立', '需要教育和再培训'], divergence: ['控制还是发展优先', '监管的力度和方式', 'AI 对就业的净影响']
+  },
+  {
+    topic: '996工作制', sideA: '996 应被淘汰', sideB: '996 是奋斗的体现',
+    a: ['严重损害身心健康', '违反劳动法规定', '降低长期工作幸福感', '挤压家庭和个人时间', '扼杀创造力', '导致低效率的无效加班', '不利于人才培养和留存'],
+    b: ['创业初期需要拼搏', '快速成长需要时间投入', '高回报伴随高投入', '竞争激烈不容松懈', '个人选择应被尊重', '某些行业季节性需要', '奋斗精神值得鼓励'],
+    consensus: ['健康比工作更重要', '需要平衡工作与生活', '法律底线不可突破'], divergence: ['加班文化是否必要', '个人选择与公司要求', '效率与时间的权衡']
+  },
+  {
+    topic: '短视频沉迷', sideA: '短视频危害大于收益', sideB: '短视频是时代的进步',
+    a: ['碎片化信息降低深度思考', '算法推荐形成信息茧房', '青少年沉迷影响学业', '虚假信息传播速度快', '内容质量良莠不齐', '注意力被严重侵蚀', '创作低俗化倾向'],
+    b: ['降低知识获取门槛', '普通人也有了表达渠道', '促进文化传播和交流', '创造了大量就业机会', '算法推荐提高信息匹配', '适合快节奏生活方式', '推动了技术创新'],
+    consensus: ['需要合理使用', '内容监管是必要的', '平台应承担社会责任'], divergence: ['是否应该限制使用时长', '监管的边界在哪里', '平台算法的责任']
+  },
+  {
+    topic: '大学教育贬值', sideA: '大学教育价值在下降', sideB: '大学教育依然重要',
+    a: ['学历通胀严重', '大学知识与职场脱节', '学费高涨回报率下降', '网络课程替代传统教育', '很多成功人士无大学学历', '应试教育扼杀创新能力', '职业技能培训更实用'],
+    b: ['大学培养批判性思维', '学历仍是主要筛选标准', '大学提供人脉和资源', '系统性学习无可替代', '科学研究需要大学平台', '综合素质培养重要', '名校毕业收入显著更高'],
+    consensus: ['教育体系需要改革', '终身学习是必然趋势', '学以致用是关键'], divergence: ['是否应该上大学', '大学教育的核心价值', '职业教育的地位']
+  },
+  {
+    topic: '新能源汽车', sideA: '电动车是未来趋势', sideB: '燃油车仍有优势',
+    a: ['零排放更环保', '使用成本更低', '智能化体验更好', '国家政策支持', '技术迭代速度快', '安静舒适性好', '加速性能出色'],
+    b: ['充电基础设施不完善', '续航焦虑问题未解决', '电池回收污染环境', '充电时间太长', '电池成本高维修贵', '使用寿命和保值率低', '电力来源未必清洁'],
+    consensus: ['电动化是趋势但需时间', '混动是过渡方案', '基础设施建设是关键'], divergence: ['纯电还是混动', '电池技术的发展方向', '政府补贴的合理性']
+  },
+  {
+    topic: '社交媒体实名制', sideA: '应该全面实名制', sideB: '反对全面实名制',
+    a: ['减少网络暴力和造谣', '提高网络言论责任感', '便于追责违法行为', '保护未成年人免受侵害', '降低水军和刷量', '提高网络交易安全性', '有利于网络空间治理'],
+    b: ['侵犯言论自由和隐私', '实名制会让举报者不敢发声', '数据泄露风险巨大', '压制正常的批评监督', '技术上有绕过方法', '审查制度容易被滥用', '假实名制形同虚设'],
+    consensus: ['需要平衡安全与自由', '隐私保护很重要', '分类实名可能更合理'], divergence: ['实名制的范围和程度', '隐私和安全的权衡', '政府监管的边界']
+  },
+  {
+    topic: '数字化货币', sideA: '数字人民币是进步', sideB: '数字人民币存在风险',
+    a: ['提升支付效率', '降低货币发行成本', '便于打击洗钱等犯罪', '提升货币政策传导效率', '推动人民币国际化', '无网络也可支付', '降低对第三方支付依赖'],
+    b: ['全面监控每一笔交易', '隐私权受到严重威胁', '技术安全存在隐患', '可能被用于政治管控', '冲击现有金融体系', '跨境使用面临阻力', '用户习惯难以改变'],
+    consensus: ['数字化货币是技术趋势', '需要完善法律法规', '用户权益需要保护'], divergence: ['隐私和监管的平衡', '推行速度的快慢', '对现有体系的冲击程度']
+  },
+  {
+    topic: '学生手机禁令', sideA: '学校应禁止学生用手机', sideB: '不应一刀切禁止',
+    a: ['减少上课分心提高成绩', '防止网络沉迷', '减少校园欺凌（网络）', '保护视力健康', '促进面对面社交', '减少攀比消费', '学校管理更高效'],
+    b: ['手机是学习工具', '培养自律比强制更重要', '紧急情况下需要联系', '禁令容易形同虚设', '剥夺了数字时代的基本素养', '家长接送需要沟通', '限制学生接触信息技术'],
+    consensus: ['课堂应限制手机使用', '需要家校合作引导', '培养合理使用习惯是关键'], divergence: ['完全禁止还是限制使用', '中小学生的区别对待', '管理方式的选择']
+  },
+  {
+    topic: 'ChatGPT 对教育的影响', sideA: 'ChatGPT 威胁传统教育', sideB: 'ChatGPT 是教育变革机遇',
+    a: ['学生用它作弊完成作业', '削弱独立思考能力', '教师难以评估真实水平', '答案可能错误误导学生', '降低写作和表达能力', '加剧学习惰性', '教育公平面临新挑战'],
+    b: ['个性化辅导成为可能', '减轻教师重复性工作负担', '激发学生的创造力和提问能力', '培养学生使用AI的素养', '辅助编写教学材料', '让学习更高效有趣', '促使教育评价体系改革'],
+    consensus: ['AI 将深刻改变教育', '需要新的评价体系', '师生都需要AI素养培训'], divergence: ['是否应该限制使用', '如何改革考试评价', '教师角色的转变']
+  }
+];
+
+// 50+ 论据库
+const ARGUMENT_DATABASE = [
+  { text: '数据表明效率提升约13-20%', side: 'for', tag: '数据' },
+  { text: '降低企业运营成本约30%', side: 'for', tag: '经济' },
+  { text: '员工满意度显著提升', side: 'for', tag: '人文' },
+  { text: '减少碳排放有利于环境', side: 'for', tag: '环境' },
+  { text: '全球人才招聘不受地域限制', side: 'for', tag: '人才' },
+  { text: '创新和偶遇交流不可替代', side: 'against', tag: '创新' },
+  { text: '团队协作效率下降', side: 'against', tag: '团队' },
+  { text: '企业文化难以维系', side: 'against', tag: '文化' },
+  { text: '新人培养周期延长', side: 'against', tag: '人才' },
+  { text: '工作生活边界模糊导致过劳', side: 'against', tag: '健康' },
+  { text: '安全隐患和数据泄露风险', side: 'against', tag: '安全' },
+  { text: '技术进步创造更多新岗位', side: 'for', tag: '经济' },
+  { text: 'AI 提升医疗诊断准确率', side: 'for', tag: '健康' },
+  { text: '算法偏见加剧社会不公', side: 'against', tag: '社会' },
+  { text: '深度伪造破坏社会信任', side: 'against', tag: '社会' },
+  { text: '超额回报需要超额付出', side: 'for', tag: '经济' },
+  { text: '长期加班导致健康问题', side: 'against', tag: '健康' },
+  { text: '碎片化信息降低深度思考能力', side: 'against', tag: '认知' },
+  { text: '普通人获得表达渠道', side: 'for', tag: '社会' },
+  { text: '信息茧房加剧观点极化', side: 'against', tag: '社会' },
+  { text: '学历是劳动力市场主要筛选标准', side: 'for', tag: '经济' },
+  { text: '大学知识与社会需求脱节', side: 'against', tag: '教育' },
+  { text: '大学培养批判性思维', side: 'for', tag: '教育' },
+  { text: '学费高涨回报率下降', side: 'against', tag: '经济' },
+  { text: '终身学习成为必然趋势', side: 'for', tag: '教育' },
+  { text: '电动化降低使用成本', side: 'for', tag: '经济' },
+  { text: '充电设施不足导致里程焦虑', side: 'against', tag: '技术' },
+  { text: '电池回收造成二次污染', side: 'against', tag: '环境' },
+  { text: '减少网络暴力需要实名制', side: 'for', tag: '社会' },
+  { text: '实名制侵犯言论自由', side: 'against', tag: '权利' },
+  { text: '数据泄露风险巨大', side: 'against', tag: '安全' },
+  { text: '提升货币政策传导效率', side: 'for', tag: '经济' },
+  { text: '全面监控每笔交易', side: 'against', tag: '隐私' },
+  { text: '推动人民币国际化', side: 'for', tag: '经济' },
+  { text: '减少上课分心提高成绩', side: 'for', tag: '教育' },
+  { text: '手机是重要的学习工具', side: 'against', tag: '教育' },
+  { text: '培养自律比强制更重要', side: 'against', tag: '教育' },
+  { text: '学生作弊难以评估真实水平', side: 'against', tag: '教育' },
+  { text: '个性化辅导成为可能', side: 'for', tag: '技术' },
+  { text: '面对面交流促进团队信任', side: 'against', tag: '团队' },
+  { text: '混合办公可能成为主流', side: 'consensus', tag: '趋势' },
+  { text: '监管需要跟上技术发展', side: 'consensus', tag: '社会' },
+  { text: '教育和培训需要改革', side: 'consensus', tag: '教育' },
+  { text: '健康比工作更重要', side: 'consensus', tag: '健康' },
+  { text: '需要平衡安全与自由', side: 'consensus', tag: '权利' },
+  { text: 'AI 将深刻改变所有行业', side: 'consensus', tag: '趋势' },
+  { text: '用户隐私需要法律保护', side: 'consensus', tag: '权利' },
+  { text: '任何技术都需要合理使用', side: 'consensus', tag: '技术' },
+  { text: '平台应承担社会责任', side: 'consensus', tag: '社会' },
+  { text: '基础设施是关键制约因素', side: 'consensus', tag: '经济' },
+  { text: '教育体系需要根本性改革', side: 'consensus', tag: '教育' },
+  { text: '自主性和控制力因人而异', side: 'consensus', tag: '人文' }
+];
+
+const FALLBACK_FOR_A = ['可以降低运营成本', '能够获得更多灵活性', '长期来看更有竞争力', '能吸引更多人才', '减少资源浪费', '提升用户满意度', '符合发展趋势'];
+const FALLBACK_FOR_B = ['需要专业技能支撑', '初期投入成本较高', '存在管理复杂性', '效果因团队而异', '可能带来新的风险', '实施周期较长', '合规成本不容忽视'];
+const FALLBACK_CONSENSUS = ['双方都有合理之处', '需要结合实际情况', '可以进行试点验证'];
+const FALLBACK_DIVERGENCE = ['实施路径不同', '侧重点有差异', '成本收益判断不同'];
+
+// ============================================================
+// 页面加载时填充话题库
+// ============================================================
+function initTopicLibrary() {
+  const sel = document.getElementById('topicLibrary');
+  TOPIC_LIBRARY.forEach((t, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = t.topic;
+    sel.appendChild(opt);
+  });
+}
+
+function loadTopic() {
+  const idx = parseInt(document.getElementById('topicLibrary').value);
+  if (isNaN(idx)) return;
+  const t = TOPIC_LIBRARY[idx];
+  document.getElementById('topic').value = t.topic;
+  document.getElementById('sideA').value = t.sideA;
+  document.getElementById('sideB').value = t.sideB;
+}
+
+// ============================================================
+// 生成分析
+// ============================================================
+function generate() {
+  const topic = document.getElementById('topic').value.trim();
+  const sideA = document.getElementById('sideA').value.trim();
+  const sideB = document.getElementById('sideB').value.trim();
+  if (!topic || !sideA || !sideB) { alert('请填写完整信息'); return; }
+
+  let args = { a: FALLBACK_FOR_A, b: FALLBACK_FOR_B, consensus: FALLBACK_CONSENSUS, divergence: FALLBACK_DIVERGENCE };
+  for (const t of TOPIC_LIBRARY) {
+    if (topic.includes(t.topic) || t.topic.includes(topic)) { args = { a: t.a, b: t.b, consensus: t.consensus, divergence: t.divergence }; break; }
+  }
+
+  currentData = { topic, sideA, sideB, args, date: new Date().toLocaleString() };
+  renderResult(currentData);
+
+  history = history.filter(h => h.topic !== topic || h.sideA !== sideA || h.sideB !== sideB);
+  history.unshift(currentData);
+  if (history.length > 20) history = history.slice(0, 20);
+  localStorage.setItem('debateHistory', JSON.stringify(history));
+  renderHistory();
+}
+
+// ============================================================
+// 渲染结果
+// ============================================================
+function renderResult(data) {
+  document.getElementById('resultArea').classList.remove('hidden');
+  document.getElementById('resultTopic').textContent = data.topic;
+  document.getElementById('resultSideA').textContent = data.sideA;
+  document.getElementById('resultSideB').textContent = data.sideB;
+
+  document.getElementById('proA').innerHTML = data.args.a.map(t =>
+    `<li class="flex items-start gap-2 bg-blue-50 p-2 rounded"><i class="fa fa-check-circle text-blue-500 mt-1"></i><span>${t}</span></li>`
+  ).join('');
+  document.getElementById('proB').innerHTML = data.args.b.map(t =>
+    `<li class="flex items-start gap-2 bg-red-50 p-2 rounded"><i class="fa fa-check-circle text-red-500 mt-1"></i><span>${t}</span></li>`
+  ).join('');
+  document.getElementById('consensus').innerHTML = data.args.consensus.map(t =>
+    `<li><i class="fa fa-check text-green-600 mr-1"></i>${t}</li>`
+  ).join('');
+  document.getElementById('divergence').innerHTML = data.args.divergence.map(t =>
+    `<li><i class="fa fa-times text-yellow-600 mr-1"></i>${t}</li>`
+  ).join('');
+
+  // 论据推荐
+  renderRecommendations(data);
+
+  // 图表
+  if (radarChartInstance) radarChartInstance.destroy();
+  if (barChartInstance) barChartInstance.destroy();
+
+  const scores = {
+    aScore: Math.min(5, 3 + data.args.a.length * 0.3),
+    bScore: Math.min(5, 3 + data.args.b.length * 0.3),
+    aLogic: 3.5 + Math.random() * 1.5,
+    bLogic: 3.5 + Math.random() * 1.5,
+    aFeasible: 3 + Math.random() * 2,
+    bFeasible: 3 + Math.random() * 2,
+    aPersuade: 3 + Math.random() * 2,
+    bPersuade: 3 + Math.random() * 2
+  };
+
+  // 雷达图
+  const rctx = document.getElementById('radarChart').getContext('2d');
+  radarChartInstance = new Chart(rctx, {
+    type: 'radar',
+    data: {
+      labels: ['论点强度', '论据数量', '逻辑严密性', '现实可行性', '说服力'],
+      datasets: [
+        { label: data.sideA, data: [scores.aScore, data.args.a.length, scores.aLogic, scores.aFeasible, scores.aPersuade], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.2)' },
+        { label: data.sideB, data: [scores.bScore, data.args.b.length, scores.bLogic, scores.bFeasible, scores.bPersuade], borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.2)' }
+      ]
+    },
+    options: { responsive: true, scales: { r: { beginAtZero: true, max: 6 } } }
+  });
+
+  // 柱状图
+  const bctx = document.getElementById('barChart').getContext('2d');
+  barChartInstance = new Chart(bctx, {
+    type: 'bar',
+    data: {
+      labels: ['论点强度', '论据数量', '逻辑严密性', '现实可行性', '说服力'],
+      datasets: [
+        { label: data.sideA, data: [scores.aScore, data.args.a.length, scores.aLogic, scores.aFeasible, scores.aPersuade], backgroundColor: 'rgba(59,130,246,0.7)', borderColor: '#3b82f6', borderWidth: 1 },
+        { label: data.sideB, data: [scores.bScore, data.args.b.length, scores.bLogic, scores.bFeasible, scores.bPersuade], backgroundColor: 'rgba(239,68,68,0.7)', borderColor: '#ef4444', borderWidth: 1 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { title: { display: true, text: '正反方多维度对比' } },
+      scales: { y: { beginAtZero: true, max: 6 } }
+    }
+  });
+
+  // 显示投票区域
+  showVoteArea(data.topic);
+
+  // 显示共识分析
+  renderConsensusAnalysis(data);
+}
+
+// ============================================================
+// 论据推荐
+// ============================================================
+function renderRecommendations(data) {
+  const area = document.getElementById('recommendArea');
+  const topicWords = (data.topic + data.sideA + data.sideB).toLowerCase();
+
+  // 根据关键词匹配相关论据
+  const scored = ARGUMENT_DATABASE.map(arg => {
+    let score = 0;
+    const words = topicWords.split('');
+    arg.text.split('').forEach(c => { if (topicWords.includes(c)) score += 0.5; });
+    if (arg.tag && topicWords.includes(arg.tag)) score += 3;
+    return { ...arg, score };
+  }).sort((a, b) => b.score - a.score);
+
+  const forRecs = scored.filter(a => a.side === 'for').slice(0, 3);
+  const againstRecs = scored.filter(a => a.side === 'against').slice(0, 3);
+  const consensusRecs = scored.filter(a => a.side === 'consensus').slice(0, 2);
+
+  area.innerHTML = `
+    <div>
+      <p class="text-xs text-blue-600 font-medium mb-2"><i class="fa fa-plus-circle mr-1"></i>补充正方论据</p>
+      ${forRecs.map(r => `<div class="bg-white rounded p-2 mb-1 border border-blue-100 text-sm text-gray-700">${r.text} <span class="text-xs text-gray-400">#${r.tag}</span></div>`).join('')}
+    </div>
+    <div>
+      <p class="text-xs text-red-600 font-medium mb-2"><i class="fa fa-plus-circle mr-1"></i>补充反方论据</p>
+      ${againstRecs.map(r => `<div class="bg-white rounded p-2 mb-1 border border-red-100 text-sm text-gray-700">${r.text} <span class="text-xs text-gray-400">#${r.tag}</span></div>`).join('')}
+      <div class="mt-2">
+        <p class="text-xs text-green-600 font-medium mb-1"><i class="fa fa-handshake-o mr-1"></i>共识参考</p>
+        ${consensusRecs.map(r => `<div class="bg-white rounded p-1.5 mb-1 border border-green-100 text-sm text-gray-700">${r.text}</div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// 导出 Markdown
+// ============================================================
+function exportMarkdown() {
+  if (!currentData) { alert('请先生成争议分析'); return; }
+  const d = currentData;
+  let md = `# 争议分析报告\n\n`;
+  md += `## ${d.topic}\n\n`;
+  md += `- **正方**：${d.sideA}\n`;
+  md += `- **反方**：${d.sideB}\n`;
+  md += `- **分析时间**：${d.date}\n\n`;
+  md += `## 正方论点\n\n`;
+  d.args.a.forEach(t => md += `- ${t}\n`);
+  md += `\n## 反方论点\n\n`;
+  d.args.b.forEach(t => md += `- ${t}\n`);
+  md += `\n## 共识点\n\n`;
+  d.args.consensus.forEach(t => md += `- ${t}\n`);
+  md += `\n## 分歧点\n\n`;
+  d.args.divergence.forEach(t => md += `- ${t}\n`);
+  md += `\n---\n`;
+  md += `\n*由「争议可视化器」生成*\n`;
+
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `争议分析_${d.topic}_${new Date().toISOString().slice(0, 10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// 历史记录
+// ============================================================
+function renderHistory() {
+  const sel = document.getElementById('historySelect');
+  sel.innerHTML = '<option value="">--- 选择历史记录 ---</option>' +
+    history.map((h, i) => `<option value="${i}">${h.topic} (${h.date})</option>`).join('');
+}
+
+function loadHistory() {
+  const idx = parseInt(document.getElementById('historySelect').value);
+  if (isNaN(idx)) return;
+  currentData = history[idx];
+  renderResult(currentData);
+  document.getElementById('topic').value = currentData.topic;
+  document.getElementById('sideA').value = currentData.sideA;
+  document.getElementById('sideB').value = currentData.sideB;
+}
+
+function clearHistory() {
+  if (confirm('确定清空所有历史记录？')) {
+    history = [];
+    localStorage.setItem('debateHistory', JSON.stringify(history));
+    renderHistory();
+  }
+}
+
+// ============================================================
+// 投票功能
+// ============================================================
+function getVotes() {
+  return JSON.parse(localStorage.getItem('debateVotes') || '{}');
+}
+
+function vote(side) {
+  if (!currentData) return;
+  const topicKey = currentData.topic;
+  const votes = getVotes();
+  if (!votes[topicKey]) votes[topicKey] = { A: 0, B: 0 };
+  votes[topicKey][side]++;
+  localStorage.setItem('debateVotes', JSON.stringify(votes));
+  updateVoteDisplay(topicKey, votes[topicKey]);
+  renderHotTopics();
+}
+
+function updateVoteDisplay(topicKey, voteData) {
+  const total = voteData.A + voteData.B;
+  const pctA = total > 0 ? Math.round((voteData.A / total) * 100) : 50;
+  const pctB = total > 0 ? Math.round((voteData.B / total) * 100) : 50;
+  document.getElementById('voteCountA').textContent = voteData.A;
+  document.getElementById('voteCountB').textContent = voteData.B;
+  document.getElementById('voteBarA').style.width = pctA + '%';
+  document.getElementById('voteBarB').style.width = pctB + '%';
+}
+
+function showVoteArea(topicKey) {
+  const votes = getVotes();
+  const voteData = votes[topicKey] || { A: 0, B: 0 };
+  document.getElementById('voteArea').classList.remove('hidden');
+  updateVoteDisplay(topicKey, voteData);
+}
+
+// ============================================================
+// 热门话题排行榜
+// ============================================================
+function renderHotTopics() {
+  const votes = getVotes();
+  const topicsWithVotes = TOPIC_LIBRARY.map((t, i) => {
+    const v = votes[t.topic] || { A: 0, B: 0 };
+    const total = v.A + v.B;
+    return { topic: t.topic, sideA: t.sideA, sideB: t.sideB, total, index: i };
+  }).sort((a, b) => b.total - a.total);
+
+  document.getElementById('hotTopicsList').innerHTML = topicsWithVotes.slice(0, 10).map((t, i) => {
+    const medal = i === 0 ? '<span class="text-yellow-500">&#127775;</span>' : i === 1 ? '<span class="text-gray-400">&#127775;</span>' : i === 2 ? '<span class="text-amber-600">&#127775;</span>' : `<span class="text-gray-400">${i + 1}</span>`;
+    const votes = getVotes()[t.topic] || { A: 0, B: 0 };
+    const total = votes.A + votes.B;
+    return `<div class="flex items-center justify-between p-2 ${i < 3 ? 'bg-orange-50' : 'bg-gray-50'} rounded cursor-pointer hover:bg-blue-50" onclick="selectHotTopic(${t.index})">
+      <div class="flex items-center gap-2">
+        <span class="text-lg">${medal}</span>
+        <span class="font-medium text-sm">${t.topic}</span>
+      </div>
+      <div class="flex items-center gap-2 text-xs">
+        <span class="text-blue-500">${votes.A}票正</span>
+        <span class="text-red-500">${votes.B}票反</span>
+        <span class="bg-orange-200 px-2 py-0.5 rounded font-bold">${total}票</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function selectHotTopic(index) {
+  document.getElementById('topicLibrary').value = index;
+  loadTopic();
+}
+
+// ============================================================
+// 用户话题库
+// ============================================================
+function getUserTopics() {
+  return JSON.parse(localStorage.getItem('userTopics') || '[]');
+}
+
+function saveUserTopic() {
+  const topic = document.getElementById('topic').value.trim();
+  const sideA = document.getElementById('sideA').value.trim();
+  const sideB = document.getElementById('sideB').value.trim();
+  if (!topic || !sideA || !sideB) {
+    showToast('请先填写完整的话题信息');
+    return;
+  }
+  const userTopics = getUserTopics();
+  // 检查是否已存在
+  const exists = userTopics.find(t => t.topic === topic);
+  if (exists) {
+    showToast('该话题已存在于话题库中');
+    return;
+  }
+  userTopics.push({
+    topic,
+    sideA,
+    sideB,
+    date: new Date().toLocaleDateString()
+  });
+  localStorage.setItem('userTopics', JSON.stringify(userTopics));
+  renderUserTopics();
+  showToast('话题已保存到话题库');
+}
+
+function deleteUserTopic(index) {
+  const userTopics = getUserTopics();
+  userTopics.splice(index, 1);
+  localStorage.setItem('userTopics', JSON.stringify(userTopics));
+  renderUserTopics();
+  showToast('话题已删除');
+}
+
+function loadUserTopic(index) {
+  const userTopics = getUserTopics();
+  const t = userTopics[index];
+  if (!t) return;
+  document.getElementById('topic').value = t.topic;
+  document.getElementById('sideA').value = t.sideA;
+  document.getElementById('sideB').value = t.sideB;
+  document.getElementById('topicLibrary').value = '';
+}
+
+function renderUserTopics() {
+  const userTopics = getUserTopics();
+  const listEl = document.getElementById('userTopicsList');
+  const emptyEl = document.getElementById('userTopicsEmpty');
+  if (userTopics.length === 0) {
+    listEl.innerHTML = '';
+    emptyEl.classList.remove('hidden');
+    return;
+  }
+  emptyEl.classList.add('hidden');
+  listEl.innerHTML = userTopics.map((t, i) => `
+    <div class="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-100">
+      <div class="flex-1">
+        <p class="font-medium text-sm text-purple-700">${t.topic}</p>
+        <p class="text-xs text-slate-500 mt-1">
+          <span class="text-blue-500">${t.sideA}</span>
+          <span class="text-slate-300 mx-1">VS</span>
+          <span class="text-red-500">${t.sideB}</span>
+        </p>
+        <p class="text-xs text-slate-400 mt-1">保存于 ${t.date}</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="loadUserTopic(${i})" class="text-purple-600 hover:text-purple-800 text-sm px-2"><i class="fa fa-folder-open"></i></button>
+        <button onclick="deleteUserTopic(${i})" class="text-red-500 hover:text-red-700 text-sm px-2"><i class="fa fa-trash"></i></button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// 共识分析
+// ============================================================
+function analyzeConsensus(data) {
+  const argsA = data.args.a || [];
+  const argsB = data.args.b || [];
+
+  // 提取关键词
+  const extractKeywords = (texts) => {
+    const keywords = new Set();
+    texts.forEach(text => {
+      // 提取2-4字中文词
+      const words = text.match(/[\u4e00-\u9fff]{2,4}/g) || [];
+      words.forEach(w => keywords.add(w.toLowerCase()));
+    });
+    return keywords;
+  };
+
+  const keywordsA = extractKeywords(argsA);
+  const keywordsB = extractKeywords(argsB);
+
+  // 共同关键词
+  const sharedKeywords = [...keywordsA].filter(k => keywordsB.has(k));
+
+  // 计算重叠度（基于论点相似度）
+  let overlapCount = 0;
+  argsA.forEach(argA => {
+    argsB.forEach(argB => {
+      // 简单相似度：共同关键词数量
+      const wordsA = argA.match(/[\u4e00-\u9fff]{2,4}/g) || [];
+      const wordsB = argB.match(/[\u4e00-\u9fff]{2,4}/g) || [];
+      const common = wordsA.filter(w => wordsB.includes(w)).length;
+      if (common >= 2) overlapCount++;
+    });
+  });
+
+  const maxOverlap = Math.min(argsA.length, argsB.length);
+  const overlapScore = maxOverlap > 0 ? Math.round((overlapCount / maxOverlap) * 100) : 0;
+
+  // 潜在共识区建议
+  const potentialConsensus = [];
+  const consensusKeywords = ['效率', '平衡', '选择', '需要', '应该', '可以', '合理', '重要'];
+  sharedKeywords.forEach(k => {
+    if (consensusKeywords.some(c => k.includes(c))) {
+      potentialConsensus.push(`双方都提到了"${k}"相关议题，可在此方向寻找共识`);
+    }
+  });
+
+  // 如果有共识点和分歧点，添加建议
+  if (data.args.consensus && data.args.consensus.length > 0) {
+    data.args.consensus.forEach(c => {
+      potentialConsensus.push(`共识点：${c}`);
+    });
+  }
+
+  return {
+    overlapScore,
+    sharedKeywords,
+    potentialConsensus: potentialConsensus.slice(0, 5)
+  };
+}
+
+function renderConsensusAnalysis(data) {
+  const analysis = analyzeConsensus(data);
+  document.getElementById('consensusAnalysisArea').classList.remove('hidden');
+  document.getElementById('overlapScore').textContent = analysis.overlapScore + '%';
+  document.getElementById('sharedKeywordsCount').textContent = analysis.sharedKeywords.length;
+  document.getElementById('potentialConsensusCount').textContent = analysis.potentialConsensus.length;
+
+  document.getElementById('sharedKeywordsList').innerHTML = analysis.sharedKeywords.length > 0
+    ? analysis.sharedKeywords.map(k => `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs">${k}</span>`).join('')
+    : '<span class="text-slate-400 text-xs">无共同关键词</span>';
+
+  document.getElementById('potentialConsensusList').innerHTML = analysis.potentialConsensus.length > 0
+    ? analysis.potentialConsensus.map(p => `<li><i class="fa fa-check-circle text-green-500 mr-1"></i>${p}</li>`).join('')
+    : '<li class="text-slate-400">暂无明显潜在共识区</li>';
+}
+
+// ============================================================
+// Toast 提示
+// ============================================================
+function showToast(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'fixed top-4 right-4 bg-slate-800 text-white px-4 py-2 rounded shadow-lg z-50 animate-pulse';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2000);
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+initTopicLibrary();
+renderHistory();
+renderHotTopics();
+renderUserTopics();
+generate();
+</script>
+</body>
+</html>
